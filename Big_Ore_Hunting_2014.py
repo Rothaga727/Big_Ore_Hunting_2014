@@ -12,6 +12,8 @@ BLACK = (0, 0, 0)
 RED = (255, 0, 0)
 GREEN = (0, 255, 0)
 BLUE = (0, 0, 255)
+
+
 class WorldContainer(pygame.Surface):
     def __init__(self, width, height, pos=(0, 0)):
         pygame.Surface.__init__(self, (width, height))
@@ -33,18 +35,18 @@ class GroundChunk(pygame.sprite.Sprite):
 
         self.rect = pygame.Rect(self.pos, self.image.get_size())
 
-    def update(self, key, player):
-        if key == pygame.K_w:
-            self.rect.y += 50
-        if key == pygame.K_a:
-            self.rect.x += 50
-        if key == pygame.K_s:
-            self.rect.y -= 50
-        if key == pygame.K_d:
-            self.rect.x -= 50
+    def update(self, player, key=None, amount=1):
+        if key is not None:
+            if key == pygame.K_w:
+                self.rect.y += amount
+            if key == pygame.K_a:
+                self.rect.x += amount
+            if key == pygame.K_s:
+                self.rect.y -= amount
+            if key == pygame.K_d:
+                self.rect.x -= amount
 
         if self.rect.colliderect(player.rect):
-            print "COLLIDING"
             self.kill()
 
 
@@ -109,31 +111,39 @@ class Game():
                     break
 
                 if event.type == pygame.KEYDOWN:
+                    if event.key in (pygame.K_s, pygame.K_w, pygame.K_a, pygame.K_d):
+                        if event.key == pygame.K_s:
 
-                    if event.key == pygame.K_s:
-                        if self.player.global_y*5 < 2350:
-                            self.player.global_y += 1
-                            self.ground_chunks.update(event.key, self.player)
-                            for world in self.world_rects:
-                                world.y -= 50
-                    elif event.key == pygame.K_w:
-                        if self.player.global_y*5 > -50:
-                            self.player.global_y -= 1
-                            self.ground_chunks.update(event.key, self.player)
-                            for world in self.world_rects:
-                                world.y += 50
-                    elif event.key == pygame.K_a:
-                        if self.player.global_x*5 > -3200:
-                            self.player.global_x -= 1
-                            self.ground_chunks.update(event.key, self.player)
-                            for world in self.world_rects:
-                                world.x += 50
-                    elif event.key == pygame.K_d:
-                        if self.player.global_x*5 < 3200:
-                            self.player.global_x += 1
-                            self.ground_chunks.update(event.key, self.player)
-                            for world in self.world_rects:
-                                world.x -= 50
+                            temp_rect = pygame.Rect((self.player.rect.x,
+                                                     self.player.rect.y+1), self.player.image.get_size())
+                            if temp_rect.collidelist([x.rect for x in self.ground_chunks]) != -1:
+                                move_player = self.clip_amount(self.player.global_x)
+                                for spr in self.ground_chunks:
+                                    spr.rect.x += move_player
+
+                            if self.player.global_y < 2350:
+                                self.player.global_y += 1
+                                for world in self.world_rects:
+                                    world.y -= 1
+
+                        elif event.key == pygame.K_w:
+                            if self.player.global_y > -50:
+                                self.player.global_y -= 1
+                                for world in self.world_rects:
+                                    world.y += 1
+
+                        elif event.key == pygame.K_a:
+                            if self.player.global_x > (-3200+self.game_window.get_width()/2):
+                                self.player.global_x -= 1
+                                for world in self.world_rects:
+                                    world.x += 1
+
+                        elif event.key == pygame.K_d:
+                            if self.player.global_x < (3200-self.game_window.get_width()/2):
+                                self.player.global_x += 1
+                                for world in self.world_rects:
+                                    world.x -= 1
+                        self.ground_chunks.update(self.player, event.key)
 
             self.game_window.fill(WHITE)
             self.above_world.fill(self.bg_color)
@@ -151,7 +161,6 @@ class Game():
         pygame.quit()
 
     def gen_ground_chunks(self):
-
         print "Generating Chunks"
         y_counter = 0
         for y in range(int(2400/50)):
@@ -162,7 +171,16 @@ class Game():
                 self.ground_chunks.add(GroundChunk(color=rand_color, pos=(x_counter+15, y_counter+25)))
                 x_counter += 50
 
+    @staticmethod
+    def clip_amount(axis_pos):
+        remainder = axis_pos % 50
 
+        if remainder == 0:
+            return 0
+        elif remainder not in range(16, 34):
+            return (round(float(axis_pos)/50)*50) - axis_pos
+        else:
+            return 0
 
 if __name__ == "__main__":
     Game()
