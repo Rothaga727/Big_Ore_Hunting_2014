@@ -12,6 +12,7 @@ BLACK = (0, 0, 0)
 RED = (255, 0, 0)
 GREEN = (0, 255, 0)
 BLUE = (0, 0, 255)
+CLOCK = pygame.time.Clock()
 
 
 class WorldContainer(pygame.Surface):
@@ -25,6 +26,7 @@ class WorldContainer(pygame.Surface):
         self.objects = {}
 
 
+# Everything that can be mined in the underworld
 class GroundChunk(pygame.sprite.Sprite):
     def __init__(self, pos, color=(0, 0, 0)):
         pygame.sprite.Sprite.__init__(self)
@@ -35,32 +37,32 @@ class GroundChunk(pygame.sprite.Sprite):
 
         self.rect = pygame.Rect(self.pos, self.image.get_size())
 
-    def update(self, player, key=None, amount=1):
-        if key is not None:
-            if key == pygame.K_w:
-                self.rect.y += amount
-            if key == pygame.K_a:
-                self.rect.x += amount
-            if key == pygame.K_s:
-                self.rect.y -= amount
-            if key == pygame.K_d:
-                self.rect.x -= amount
+    def update(self, player, keys, amount=1):
 
+        if keys[pygame.K_w]:
+            self.rect.y += amount
+        elif keys[pygame.K_a]:
+            self.rect.x += amount
+        elif keys[pygame.K_s]:
+            self.rect.y -= amount
+        elif keys[pygame.K_d]:
+            self.rect.x -= amount
         if self.rect.colliderect(player.rect):
             self.kill()
 
 
+# Player class
 class Digger():
     def __init__(self):
         self.image = pygame.Surface((50, 50))
-        self.image.fill((0, 0, 0))
+        self.image.fill(WHITE)
         self.global_x = 0
         self.global_y = 0
         self.rect = pygame.Rect((640-(self.image.get_width()/2),
                                  400-(self.image.get_height()/2)), self.image.get_size())
 
         self.inventory = []
-        
+        self.speed = 1
         self.health = 100
         self.max_health = 100
         
@@ -74,12 +76,14 @@ class Digger():
         pass
 
 
+# Used to create bases at the surface
 class Outpost():
     def __init__(self, name, pos):
         self.name = name
         self.pos = pos
 
 
+# Creates spooky monsters
 class Monster():
     def __init__(self):
         pass
@@ -92,6 +96,7 @@ class Game():
         self.below_world = WorldContainer(width=6400, height=2400, pos=(-3200, 400))
         self.world_rects = (self.above_world.rect, self.below_world.rect)
         self.ground_chunks = pygame.sprite.Group()
+        self.ground_chunks_rects = [x.rect for x in self.ground_chunks]
 
         self.bg_color = (135, 206, 250)
         self.player = Digger()
@@ -101,49 +106,62 @@ class Game():
         self.gen_ground_chunks()
         self.game_loop()
 
+    # Main game loop
     def game_loop(self):
         pygame.key.set_repeat(10, 10)
+        is_space = False
         while self.playing:
-            events = pygame.event.get()
-            for event in events:
-                if event.type == pygame.QUIT:
-                    self.playing = False
-                    break
+            self.ground_chunks_rects = [x.rect for x in self.ground_chunks]
 
-                if event.type == pygame.KEYDOWN:
-                    if event.key in (pygame.K_s, pygame.K_w, pygame.K_a, pygame.K_d):
-                        if event.key == pygame.K_s:
+            # Main event loop
+            # Turn on the drill
+            if pygame.event.get(pygame.QUIT):
+                self.playing = False
+                pygame.quit()
+                break
+            pygame.event.pump()
 
-                            temp_rect = pygame.Rect((self.player.rect.x,
-                                                     self.player.rect.y+1), self.player.image.get_size())
-                            if temp_rect.collidelist([x.rect for x in self.ground_chunks]) != -1:
-                                move_player = self.clip_amount(self.player.global_x)
-                                for spr in self.ground_chunks:
-                                    spr.rect.x += move_player
+            keys = pygame.key.get_pressed()
+            if keys[pygame.K_SPACE]:
+                is_space = True
+            else:
+                is_space = False
 
-                            if self.player.global_y < 2350:
-                                self.player.global_y += 1
-                                for world in self.world_rects:
-                                    world.y -= 1
+            if keys[pygame.K_p]:
+                self.player.speed += 1
+            if keys[pygame.K_o] and self.player.speed > 1:
+                self.player.speed -= 1
+            if keys[pygame.K_l]:
+                self.player.speed = 1
 
-                        elif event.key == pygame.K_w:
-                            if self.player.global_y > -50:
-                                self.player.global_y -= 1
-                                for world in self.world_rects:
-                                    world.y += 1
+            if any(keys):
+                # Create a copy of the rectangle for collision testing
+                temp_rect = self.player.rect.copy()
+                move = True
+                # Move the rectangle and check for collisions
+                if keys[pygame.K_w]:
+                    temp_rect.move_ip(0, -self.player.speed)
+                elif keys[pygame.K_a]:
+                    temp_rect.move_ip(-self.player.speed, 0)
+                elif keys[pygame.K_s]:
+                    temp_rect.move_ip(0, self.player.speed)
+                elif keys[pygame.K_d]:
+                    temp_rect.move_ip(self.player.speed, 0)
+                else:
+                    move = False
 
-                        elif event.key == pygame.K_a:
-                            if self.player.global_x > (-3200+self.game_window.get_width()/2):
-                                self.player.global_x -= 1
-                                for world in self.world_rects:
-                                    world.x += 1
+                if move:
+                    # If the drill is activated and there's a block in the way
+                    if temp_rect.collidelist(self.ground_chunks_rects) != -1 and is_space:
+                        self.ground_chunks.update(self.player, keys, self.player.speed)
 
-                        elif event.key == pygame.K_d:
-                            if self.player.global_x < (3200-self.game_window.get_width()/2):
-                                self.player.global_x += 1
-                                for world in self.world_rects:
-                                    world.x -= 1
-                        self.ground_chunks.update(self.player, event.key)
+                    # If there is nothing in the way
+                    elif temp_rect.collidelist(self.ground_chunks_rects) == -1:
+                        self.ground_chunks.update(self.player, keys, self.player.speed)
+
+                    # If the drill is not activated, and there is a block in the way
+                    else:
+                        self.ground_chunks.update(self.player, keys, self.max_move(keys))
 
             self.game_window.fill(WHITE)
             self.above_world.fill(self.bg_color)
@@ -157,8 +175,7 @@ class Game():
             self.game_window.blit(self.font.render("("+str(self.player.global_x)+"," +
                                                    str(self.player.global_y)+")", 1, (0, 255, 0)), (400, 10))
             pygame.display.flip()
-
-        pygame.quit()
+            CLOCK.tick(60)
 
     def gen_ground_chunks(self):
         print "Generating Chunks"
@@ -170,6 +187,24 @@ class Game():
                 rand_color = random.choice((RED, GREEN, BLUE))
                 self.ground_chunks.add(GroundChunk(color=rand_color, pos=(x_counter+15, y_counter+25)))
                 x_counter += 50
+
+    # Calculates the maximum distance the player can move without colliding with something
+    def max_move(self, keys):
+        for value in reversed(range(self.player.speed)):
+            temp_rect = self.player.rect.copy()
+
+            if keys[pygame.K_w]:
+                temp_rect.move_ip(0, -value)
+            elif keys[pygame.K_a]:
+                temp_rect.move_ip(-value, 0)
+            elif keys[pygame.K_s]:
+                temp_rect.move_ip(0, value)
+            elif keys[pygame.K_d]:
+                temp_rect.move_ip(value, 0)
+
+            if temp_rect.collidelist(self.ground_chunks_rects) == -1:
+                return value
+        return 1
 
     @staticmethod
     def clip_amount(axis_pos):
